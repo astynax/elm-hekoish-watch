@@ -4,8 +4,7 @@ import Color exposing (..)
 import Collage exposing (..)
 import Date exposing (Date)
 import Element exposing (toHtml)
-import Html exposing (Html)
-import Html.App exposing (program)
+import Html exposing (Html, program)
 import List exposing (filterMap)
 import Platform.Cmd
 import Platform.Sub
@@ -23,7 +22,7 @@ type alias Model =
     ( ( Int, Int ), Date )
 
 
-main : Program Never
+main : Program Never Model Msg
 main =
     program
         { init = init
@@ -37,8 +36,8 @@ init : ( Model, Cmd Msg )
 init =
     ( ( ( 0, 0 ), Date.fromTime 0 )
     , Cmd.batch
-        [ Task.perform Resize Resize Window.size
-        , Task.perform Tick Tick Date.now
+        [ Task.perform Resize Window.size
+        , Task.perform Tick Date.now
         ]
     )
 
