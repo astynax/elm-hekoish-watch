@@ -1,43 +1,56 @@
-module Main exposing (..)
+module Main exposing (main)
 
-import Color exposing (..)
+import Browser
+import Browser.Dom
+import Browser.Events
 import Collage exposing (..)
-import Date exposing (Date)
-import Element exposing (toHtml)
-import Html exposing (Html, program)
+import Collage.Layout
+import Collage.Render
+import Color exposing (black, green, lightGreen, lightRed, lightYellow, red, yellow)
+import Html exposing (Html)
 import List exposing (filterMap)
 import Platform.Cmd
 import Platform.Sub
 import Task
-import Time exposing (every, second)
-import Window exposing (Size)
+import Time exposing (Posix)
 
 
 type Msg
-    = Resize Size
-    | Tick Date
+    = Resize Float Float
+    | Tick Posix
+    | Here Time.Zone
 
 
 type alias Model =
-    ( ( Int, Int ), Date )
+    { width : Float
+    , height : Float
+    , date : Posix
+    , zone : Time.Zone
+    }
 
 
-main : Program Never Model Msg
+main : Program () Model Msg
 main =
-    program
-        { init = init
+    Browser.element
+        { init = always init
         , update = update
-        , subscriptions = always <| subscriptions
+        , subscriptions = always subscriptions
         , view = view
         }
 
 
 init : ( Model, Cmd Msg )
 init =
-    ( ( ( 0, 0 ), Date.fromTime 0 )
+    ( { width = 100
+      , height = 100
+      , date = Time.millisToPosix 0
+      , zone = Time.utc
+      }
     , Cmd.batch
-        [ Task.perform Resize Window.size
-        , Task.perform Tick Date.now
+        [ Task.perform (\vp -> Resize vp.viewport.width vp.viewport.height)
+            Browser.Dom.getViewport
+        , Task.perform Tick Time.now
+        , Task.perform Here Time.here
         ]
     )
 
@@ -45,26 +58,25 @@ init =
 subscriptions : Sub Msg
 subscriptions =
     Sub.batch
-        [ Window.resizes Resize
-        , every (10 * second) (Tick << Date.fromTime)
+        [ Browser.Events.onResize (\w h -> Resize (toFloat w) (toFloat h))
+        , Time.every (10 * 1000) Tick
         ]
 
 
 view : Model -> Html Msg
-view ( ( w, h ), date ) =
-    let
-        width =
-            toFloat w
-
-        height =
-            toFloat h
-    in
-        toHtml <|
-            collage w
-                h
-                [ filled black <| rect width height
-                , clock (min width height) ( Date.hour date, Date.minute date )
-                ]
+view model =
+    Collage.Render.svgBox
+        ( model.width
+        , model.height
+        )
+    <|
+        Collage.Layout.stack
+            [ clock (min model.width model.height)
+                ( Time.toHour model.zone model.date
+                , Time.toMinute model.zone model.date
+                )
+            , filled (uniform black) <| rectangle model.width model.height
+            ]
 
 
 
@@ -92,7 +104,7 @@ view ( ( w, h ), date ) =
 -}
 
 
-clock : Float -> ( Int, Int ) -> Form
+clock : Float -> ( Int, Int ) -> Collage a
 clock size ( h, m ) =
     let
         ledSize =
@@ -113,56 +125,56 @@ clock size ( h, m ) =
         led p c1 c2 x y =
             if p then
                 Just
-                    (move ( x, y ) <|
+                    (shift ( x, y ) <|
                         group
-                            [ filled c1 <| circle ledSize
-                            , filled c2 <| circle <| ledSize * 0.8
+                            [ filled (uniform c1) <| circle ledSize
+                            , filled (uniform c2) <| circle <| ledSize * 0.8
                             ]
                     )
+
             else
                 Nothing
 
-        gtt12 =
-            h >= 12
-
         hh =
-            h % 12
+            modBy 12 h
 
         h3 =
-            h % 3
+            modBy 3 h
 
         m5 =
-            (m % 15) // 5
+            modBy 15 m // 5
 
         m1 =
-            m % 5
+            modBy 5 m
     in
-        group <|
-            filterMap identity <|
-                [ led (hh >= 3) green lightGreen d3_10 d3_10
-                , led (hh >= 9) green lightGreen -d3_10 d3_10
-                , led (hh >= 6) green lightGreen 0 d1_5
-                , led (gtt12) green lightGreen 0 d2_5
-                , led (m >= 15) green lightGreen d3_10 -d3_10
-                , led (m >= 45) green lightGreen -d3_10 -d3_10
-                  --, led (m >= 60) green  lightGreen    0     -d1_5  -- 60min newer happen
-                , led (m >= 30) green lightGreen 0 -d2_5
-                , led (h3 > 0) red lightRed -d1_10 d3_10
-                , led (h3 > 1) red lightRed d1_10 d3_10
-                , led (m5 > 0) red lightRed -d1_10 -d3_10
-                , led (m5 > 1) red lightRed d1_10 -d3_10
-                , led (m1 > 0) yellow lightYellow -d3_10 0
-                , led (m1 > 1) yellow lightYellow -d1_10 0
-                , led (m1 > 2) yellow lightYellow d1_10 0
-                , led (m1 > 3) yellow lightYellow d3_10 0
-                ]
+    group <|
+        filterMap identity <|
+            [ led (hh >= 3) green lightGreen d3_10 d3_10
+            , led (hh >= 9) green lightGreen -d3_10 d3_10
+            , led (hh >= 6) green lightGreen 0 d1_5
+            , led (h >= 12) green lightGreen 0 d2_5
+            , led (m >= 15) green lightGreen d3_10 -d3_10
+            , led (m >= 45) green lightGreen -d3_10 -d3_10
+            , led (m >= 30) green lightGreen 0 -d2_5
+            , led (h3 > 0) red lightRed -d1_10 d3_10
+            , led (h3 > 1) red lightRed d1_10 d3_10
+            , led (m5 > 0) red lightRed -d1_10 -d3_10
+            , led (m5 > 1) red lightRed d1_10 -d3_10
+            , led (m1 > 0) yellow lightYellow -d3_10 0
+            , led (m1 > 1) yellow lightYellow -d1_10 0
+            , led (m1 > 2) yellow lightYellow d1_10 0
+            , led (m1 > 3) yellow lightYellow d3_10 0
+            ]
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
-update msg ( size, date ) =
+update msg model =
     case msg of
-        Resize s ->
-            ( ( ( s.width, s.height ), date ), Cmd.none )
+        Resize w h ->
+            ( { model | width = w, height = h }, Cmd.none )
 
         Tick d ->
-            ( ( size, d ), Cmd.none )
+            ( { model | date = d }, Cmd.none )
+
+        Here z ->
+            ( { model | zone = z }, Cmd.none )
